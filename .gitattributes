@@ -1,0 +1,27 @@
+# Normalize line endings to LF in the repository.
+# Each OS checks out in its native format.
+* text=auto eol=lf
+
+# Explicitly declare text files
+*.go      text eol=lf
+*.mod     text eol=lf
+*.sum     text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.toml    text eol=lf
+*.txt     text eol=lf
+*.sh      text eol=lf
+*.env     text eol=lf
+Dockerfile text eol=lf
+Makefile   text eol=lf
+
+# Denote binary files
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.png   binary
+*.jpg   binary
+*.ico   binary

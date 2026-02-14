@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://idefinity.app/schemas/feedback-v1.json",
+  "title": "Idefinity Feedback",
+  "description": "NPS feedback submission from the Idefinity desktop application",
+  "type": "object",
+
+  "definitions": {
+    "iso8601DateTime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})?$",
+      "examples": ["2025-06-15T14:23:00Z", "2025-06-15T09:23:00+03:00"]
+    }
+  },
+
+  "required": [
+    "schema_version",
+    "app",
+    "app_version",
+    "platform",
+    "timestamp",
+    "nps_rating",
+    "nps_category"
+  ],
+
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version for forward compatibility"
+    },
+    "app": {
+      "type": "string",
+      "const": "idefinity",
+      "description": "Application identifier"
+    },
+    "app_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(\\.\\d+)?$",
+      "description": "Semantic version of the application (Major.Minor.Bug or Major.Minor.Bug.NonRelease)",
+      "examples": ["0.1.0", "1.0.0", "1.2.3.4"]
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["macOS", "Windows"],
+      "description": "Operating system the feedback was sent from"
+    },
+    "timestamp": {
+      "$ref": "#/definitions/iso8601DateTime",
+      "description": "ISO 8601 timestamp of when the feedback was submitted"
+    },
+    "nps_rating": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Net Promoter Score rating (1 = not likely, 10 = very likely to recommend)"
+    },
+    "nps_category": {
+      "type": "string",
+      "enum": ["detractor", "passive", "promoter"],
+      "description": "NPS classification derived from nps_rating: 1-6 = detractor, 7-8 = passive, 9-10 = promoter"
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone name or OS-specific timezone identifier from the user's system",
+      "examples": ["Europe/Helsinki", "America/New_York", "Eastern Standard Time"]
+    },
+    "comment": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional free-text feedback from the user"
+    }
+  },
+
+  "additionalProperties": false,
+
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "app": "idefinity",
+      "app_version": "0.1.0",
+      "platform": "macOS",
+      "timestamp": "2025-06-15T14:23:00+03:00",
+      "nps_rating": 9,
+      "nps_category": "promoter",
+      "timezone": "Europe/Helsinki",
+      "comment": "Love the IDEF0 modeling workflow, would like more export formats."
+    },
+    {
+      "schema_version": "1.0",
+      "app": "idefinity",
+      "app_version": "0.1.0",
+      "platform": "Windows",
+      "timestamp": "2025-06-15T10:00:00Z",
+      "nps_rating": 5,
+      "nps_category": "detractor",
+      "timezone": "Eastern Standard Time"
+    }
+  ]
+}
