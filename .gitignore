@@ -33,3 +33,9 @@ go.work.sum
 
 # Windows reserved name artifacts
 nul
+
+# Claude worktrees
+.claude/
+
+# Docker compose overrides
+docker-compose.override.yml
