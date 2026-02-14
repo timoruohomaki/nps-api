@@ -7,18 +7,19 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// Feedback represents an NPS feedback submission.
 type Feedback struct {
-	ID            bson.ObjectID `bson:"_id,omitempty"    json:"id,omitempty"`
-	SchemaVersion string        `bson:"schema_version"   json:"schema_version"`
-	App           string        `bson:"app"              json:"app"`
-	AppVersion    string        `bson:"app_version"      json:"app_version"`
-	Platform      string        `bson:"platform"         json:"platform"`
-	Timestamp     string        `bson:"timestamp"        json:"timestamp"`
-	NPSRating     int           `bson:"nps_rating"       json:"nps_rating"`
-	NPSCategory   string        `bson:"nps_category"     json:"nps_category"`
+	ID            bson.ObjectID `bson:"_id,omitempty"      json:"id,omitempty"`
+	SchemaVersion string        `bson:"schema_version"     json:"schema_version"`
+	App           string        `bson:"app"                json:"app"`
+	AppVersion    string        `bson:"app_version"        json:"app_version"`
+	Platform      string        `bson:"platform"           json:"platform"`
+	Timestamp     string        `bson:"timestamp"          json:"timestamp"`
+	NPSRating     int           `bson:"nps_rating"         json:"nps_rating"`
+	NPSCategory   string        `bson:"nps_category"       json:"nps_category"`
 	Timezone      string        `bson:"timezone,omitempty" json:"timezone,omitempty"`
 	Comment       string        `bson:"comment,omitempty"  json:"comment,omitempty"`
-	ReceivedAt    time.Time     `bson:"received_at"      json:"received_at"`
+	ReceivedAt    time.Time     `bson:"received_at"        json:"received_at"`
 }
 
 var validPlatforms = map[string]bool{
@@ -32,6 +33,7 @@ var validCategories = map[string]bool{
 	"promoter":  true,
 }
 
+// Validate checks that all required fields are present and valid.
 func (f *Feedback) Validate() error {
 	if f.SchemaVersion != "1.0" {
 		return fmt.Errorf("unsupported schema_version: %q", f.SchemaVersion)

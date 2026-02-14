@@ -6,20 +6,21 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/model"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
+// FeedbackHandler handles NPS feedback submissions.
 type FeedbackHandler struct {
-	collection *mongo.Collection
+	db *db.Database
 }
 
-func NewFeedbackHandler(db *mongo.Database) *FeedbackHandler {
-	return &FeedbackHandler{
-		collection: db.Collection("feedback"),
-	}
+// NewFeedbackHandler creates a handler backed by the given database.
+func NewFeedbackHandler(database *db.Database) *FeedbackHandler {
+	return &FeedbackHandler{db: database}
 }
 
+// Submit handles POST requests to store NPS feedback.
 func (h *FeedbackHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	var fb model.Feedback
 	if err := json.NewDecoder(r.Body).Decode(&fb); err != nil {
@@ -38,7 +39,7 @@ func (h *FeedbackHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 	fb.ReceivedAt = time.Now().UTC()
 
-	_, err := h.collection.InsertOne(r.Context(), fb)
+	_, err := h.db.Collection("feedback").InsertOne(r.Context(), fb)
 	if err != nil {
 		slog.Error("failed to insert feedback", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -50,16 +51,4 @@ func (h *FeedbackHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"status": "ok",
 	})
-}
-
-func HealthCheck(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "healthy",
-	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
 }

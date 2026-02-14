@@ -1,0 +1,16 @@
+# docker-compose.prod.yml — production compose file for the server
+# Uses pre-built image from ghcr.io instead of building locally
+# Deploy to server at ~/nps-api/docker-compose.yml
+
+services:
+  nps-api:
+    image: ghcr.io/timoruohomaki/nps-api:latest
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      - PORT=8081
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DATABASE=${MONGODB_DATABASE:-nps}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=production
+    restart: unless-stopped

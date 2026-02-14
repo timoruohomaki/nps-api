@@ -2,6 +2,7 @@ package config
 
 import "os"
 
+// Config holds application configuration loaded from environment variables.
 type Config struct {
 	Port            string
 	MongoURI        string
@@ -11,9 +12,10 @@ type Config struct {
 	SentryTraceRate float64
 }
 
+// Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	return &Config{
-		Port:            getEnv("PORT", "8080"),
+		Port:            getEnv("PORT", "8081"),
 		MongoURI:        getEnv("MONGODB_URI", ""),
 		MongoDatabase:   getEnv("MONGODB_DATABASE", "nps"),
 		SentryDSN:       getEnv("SENTRY_DSN", ""),

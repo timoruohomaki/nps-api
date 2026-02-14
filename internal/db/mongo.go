@@ -8,7 +8,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func Connect(ctx context.Context, uri string) (*mongo.Client, error) {
+// Database wraps a MongoDB client and provides access to a named database.
+type Database struct {
+	client   *mongo.Client
+	database *mongo.Database
+}
+
+// Connect establishes a connection to MongoDB and pings to verify.
+func Connect(ctx context.Context, uri, dbName string) (*Database, error) {
 	if uri == "" {
 		return nil, fmt.Errorf("MONGODB_URI is not set")
 	}
@@ -22,9 +29,18 @@ func Connect(ctx context.Context, uri string) (*mongo.Client, error) {
 		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
 
-	return client, nil
+	return &Database{
+		client:   client,
+		database: client.Database(dbName),
+	}, nil
 }
 
-func Disconnect(ctx context.Context, client *mongo.Client) error {
-	return client.Disconnect(ctx)
+// Collection returns a handle to the named collection.
+func (d *Database) Collection(name string) *mongo.Collection {
+	return d.database.Collection(name)
+}
+
+// Close disconnects the MongoDB client.
+func (d *Database) Close(ctx context.Context) error {
+	return d.client.Disconnect(ctx)
 }

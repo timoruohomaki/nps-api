@@ -1,0 +1,9 @@
+.git
+.github
+.claude
+.env
+*.md
+docs/
+test/
+LICENSE
+nul

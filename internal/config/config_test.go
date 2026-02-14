@@ -6,15 +6,14 @@ import (
 )
 
 func TestLoad_Defaults(t *testing.T) {
-	// Clear any env vars that might be set
 	os.Unsetenv("PORT")
 	os.Unsetenv("MONGODB_URI")
 	os.Unsetenv("MONGODB_DATABASE")
 
 	cfg := Load()
 
-	if cfg.Port != "8080" {
-		t.Errorf("expected default port 8080, got %s", cfg.Port)
+	if cfg.Port != "8081" {
+		t.Errorf("expected default port 8081, got %s", cfg.Port)
 	}
 	if cfg.MongoDatabase != "nps" {
 		t.Errorf("expected default database nps, got %s", cfg.MongoDatabase)

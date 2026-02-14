@@ -1,0 +1,15 @@
+# docker-compose.yml — local development
+# Builds locally and reads .env automatically
+
+services:
+  nps-api:
+    build: .
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      - PORT=8081
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DATABASE=${MONGODB_DATABASE:-nps}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=development
+    restart: unless-stopped
