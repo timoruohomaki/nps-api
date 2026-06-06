@@ -32,6 +32,7 @@ nps-api/
 │   │   ├── health.go             # GET /nps/health + JSON helpers
 │   │   └── handler_test.go       # Unit tests
 │   ├── middleware/logging.go     # Request logging (method, path, status, duration)
+│   ├── middleware/apikey.go      # Optional X-API-Key check on /nps/api/* (no-op if API_KEYS empty)
 │   └── model/
 │       ├── feedback.go           # Data model and validation
 │       └── feedback_test.go
@@ -85,13 +86,15 @@ MONGODB_URI="mongodb://localhost:27017" go test ./test/integration/ -v  # Integr
 
 ## Environment Variables
 
-| Variable            | Default       | Description                    |
-|---------------------|---------------|--------------------------------|
-| PORT                | 8081          | HTTP listen port               |
-| MONGODB_URI         | (empty)       | MongoDB connection string      |
-| MONGODB_DATABASE    | nps           | MongoDB database name          |
-| SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled  |
-| SENTRY_ENVIRONMENT  | development   | Sentry environment tag         |
+| Variable            | Default          | Description                                                      |
+|---------------------|------------------|------------------------------------------------------------------|
+| PORT                | 8081             | HTTP listen port                                                 |
+| MONGODB_URI         | (empty)          | MongoDB connection string                                        |
+| MONGODB_DATABASE    | nps              | MongoDB database name                                            |
+| SENTRY_DSN          | (empty)          | Sentry DSN — empty = disabled                                    |
+| SENTRY_ENVIRONMENT  | development      | Sentry environment tag                                           |
+| ALLOWED_PLATFORMS   | macOS,Windows    | CSV allowlist for `platform` field — widen for mobile/web clients |
+| API_KEYS            | (empty)          | CSV allowlist for `X-API-Key` header — empty = open (back-compat) |
 
 ## API Endpoints
 

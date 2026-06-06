@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -22,9 +24,37 @@ type Feedback struct {
 	ReceivedAt    time.Time     `bson:"received_at"        json:"received_at"`
 }
 
-var validPlatforms = map[string]bool{
-	"macOS":   true,
-	"Windows": true,
+var (
+	platformsMu     sync.RWMutex
+	allowedPlatforms = map[string]bool{
+		"macOS":   true,
+		"Windows": true,
+	}
+)
+
+// SetAllowedPlatforms replaces the platform allowlist. Call once at startup
+// from the platforms parsed out of ALLOWED_PLATFORMS. An empty or all-blank
+// input is ignored so the default ({macOS, Windows}) remains in force.
+func SetAllowedPlatforms(platforms []string) {
+	m := make(map[string]bool, len(platforms))
+	for _, p := range platforms {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			m[p] = true
+		}
+	}
+	if len(m) == 0 {
+		return
+	}
+	platformsMu.Lock()
+	allowedPlatforms = m
+	platformsMu.Unlock()
+}
+
+func isPlatformAllowed(p string) bool {
+	platformsMu.RLock()
+	defer platformsMu.RUnlock()
+	return allowedPlatforms[p]
 }
 
 var validCategories = map[string]bool{
@@ -44,7 +74,7 @@ func (f *Feedback) Validate() error {
 	if f.AppVersion == "" {
 		return fmt.Errorf("app_version is required")
 	}
-	if !validPlatforms[f.Platform] {
+	if !isPlatformAllowed(f.Platform) {
 		return fmt.Errorf("invalid platform: %q", f.Platform)
 	}
 	if f.Timestamp == "" {

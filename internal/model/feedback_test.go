@@ -37,6 +37,39 @@ func TestValidate_InvalidPlatform(t *testing.T) {
 	}
 }
 
+func TestSetAllowedPlatforms(t *testing.T) {
+	t.Cleanup(func() {
+		SetAllowedPlatforms([]string{"macOS", "Windows"})
+	})
+
+	SetAllowedPlatforms([]string{"macOS", "Windows", "iOS", "Android"})
+
+	for _, p := range []string{"macOS", "Windows", "iOS", "Android"} {
+		fb := validFeedback()
+		fb.Platform = p
+		if err := fb.Validate(); err != nil {
+			t.Errorf("platform %q should be allowed, got %v", p, err)
+		}
+	}
+
+	fb := validFeedback()
+	fb.Platform = "Linux"
+	if err := fb.Validate(); err == nil {
+		t.Error("expected Linux to still be rejected")
+	}
+}
+
+func TestSetAllowedPlatforms_EmptyKeepsDefaults(t *testing.T) {
+	SetAllowedPlatforms(nil)
+	SetAllowedPlatforms([]string{"   ", ""})
+
+	fb := validFeedback()
+	fb.Platform = "macOS"
+	if err := fb.Validate(); err != nil {
+		t.Errorf("default platforms should still apply, got %v", err)
+	}
+}
+
 func TestValidate_RatingOutOfRange(t *testing.T) {
 	tests := []struct {
 		name   string

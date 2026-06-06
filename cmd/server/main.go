@@ -14,10 +14,13 @@ import (
 	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/handler"
 	"github.com/idefinity/nps-api/internal/middleware"
+	"github.com/idefinity/nps-api/internal/model"
 )
 
 func main() {
 	cfg := config.Load()
+
+	model.SetAllowedPlatforms(cfg.AllowedPlatforms)
 
 	initSentry(cfg)
 
@@ -26,9 +29,14 @@ func main() {
 
 	mux := handler.RegisterRoutes(database)
 
+	authMW := middleware.APIKey(cfg.APIKeys, []string{"/nps/api/"})
+	if len(cfg.APIKeys) > 0 {
+		slog.Info("X-API-Key auth enabled", "keys_configured", len(cfg.APIKeys))
+	}
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      middleware.Logging(mux),
+		Handler:      middleware.Logging(authMW(mux)),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,

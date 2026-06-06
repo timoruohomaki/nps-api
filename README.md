@@ -39,6 +39,8 @@ All configuration is via environment variables. See `.env.example` for reference
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |
+| `ALLOWED_PLATFORMS` | No | `macOS,Windows` | Comma-separated allowlist for the `platform` field. Set to e.g. `macOS,Windows,iOS,Android` when a mobile client also submits feedback. |
+| `API_KEYS` | No | — | Comma-separated allowlist of accepted `X-API-Key` header values. Empty = no auth (back-compat). Applies to `/nps/api/*` only; `/nps/health` stays open. |
 
 ## API Reference
 
@@ -55,9 +57,15 @@ Returns `200 OK` with `{"status": "healthy", "timestamp": "..."}`.
 ```
 POST /nps/api/v1/feedback
 Content-Type: application/json
+X-API-Key: <your-key>        # only required when API_KEYS is configured
 ```
 
 See [`docs/feedback-v1.json`](docs/feedback-v1.json) for the full JSON schema.
+
+> The `app` field is accepted as any non-empty string by the Go validator (the
+> JSON schema documents `idefinity` because that was the first client; other
+> first-party clients can identify themselves with a different value). The
+> `platform` field is checked against the `ALLOWED_PLATFORMS` env allowlist.
 
 **Example request:**
 
