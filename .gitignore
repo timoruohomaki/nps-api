@@ -27,6 +27,11 @@ go.work.sum
 # env file
 .env
 
+# SQLite database files (local dev default is ./nps.db; prod lives in a volume)
+*.db
+*.db-wal
+*.db-shm
+
 # Editor/IDE
 # .idea/
 # .vscode/

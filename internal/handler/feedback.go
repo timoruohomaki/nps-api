@@ -39,8 +39,7 @@ func (h *FeedbackHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 	fb.ReceivedAt = time.Now().UTC()
 
-	_, err := h.db.Collection("feedback").InsertOne(r.Context(), fb)
-	if err != nil {
+	if err := h.db.InsertFeedback(r.Context(), &fb); err != nil {
 		slog.Error("failed to insert feedback", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "failed to store feedback",

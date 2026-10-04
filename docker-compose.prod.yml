@@ -9,8 +9,15 @@ services:
       - "127.0.0.1:8081:8081"
     environment:
       - PORT=8081
-      - MONGODB_URI=${MONGODB_URI}
-      - MONGODB_DATABASE=${MONGODB_DATABASE:-nps}
+      - DB_PATH=/data/nps.db
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=production
+    volumes:
+      # Named volume persists the SQLite database across `down`/recreate.
+      # Wiped only by `docker compose down -v`. Back up with:
+      #   docker compose cp nps-api:/data/nps.db ./nps-backup.db
+      - nps-data:/data
     restart: unless-stopped
+
+volumes:
+  nps-data:

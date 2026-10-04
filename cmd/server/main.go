@@ -21,7 +21,7 @@ func main() {
 
 	initSentry(cfg)
 
-	database, cleanup := connectMongo(cfg)
+	database, cleanup := connectDB(cfg)
 	defer cleanup()
 
 	mux := handler.RegisterRoutes(database)
@@ -60,16 +60,16 @@ func initSentry(cfg *config.Config) {
 	slog.Info("Sentry initialized", "environment", cfg.SentryEnv)
 }
 
-func connectMongo(cfg *config.Config) (*db.Database, func()) {
+func connectDB(cfg *config.Config) (*db.Database, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	database, err := db.Connect(ctx, cfg.MongoURI, cfg.MongoDatabase)
+	database, err := db.Connect(ctx, cfg.DBPath)
 	if err != nil {
-		slog.Error("MongoDB connection failed", "error", err)
+		slog.Error("database connection failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("connected to MongoDB")
+	slog.Info("database ready", "path", cfg.DBPath)
 
 	cleanup := func() {
 		sentry.Flush(2 * time.Second)

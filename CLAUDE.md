@@ -2,18 +2,20 @@
 
 ## Project Overview
 
-REST API to collect NPS (Net Promoter Score) feedback from the Idefinity desktop
-application. Deployed as a Docker container at `api.ruohomaki.fi/nps` behind an
-Nginx reverse proxy.
+REST API to collect NPS (Net Promoter Score) feedback from the `rokdsk` and
+`idefinity` desktop applications. Deployed as a Docker container at
+`api.ruohomaki.fi/nps` behind an Nginx reverse proxy.
 
 Infrastructure context lives in the `backend01` repository (Nginx configs, SSL,
-runbooks, deployment scripts).
+runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deploy-nps.md`.
 
 ## Architecture
 
 - **Language:** Go 1.24+
 - **Router:** Standard library `net/http` (Go 1.22+ routing patterns)
-- **Database:** MongoDB Atlas (cloud) via `go.mongodb.org/mongo-driver/v2`
+- **Database:** Local SQLite via `modernc.org/sqlite` (pure-Go, no CGO). One
+  `feedback` table; file persisted in a Docker volume at `/data/nps.db`. No
+  external database or network dependency.
 - **Monitoring:** Sentry (`github.com/getsentry/sentry-go`) — optional, enabled via SENTRY_DSN
 - **Deployment:** Docker container on port 8081, reverse-proxied by Nginx
 
@@ -25,7 +27,7 @@ nps-api/
 ├── internal/
 │   ├── config/config.go          # Environment-based configuration
 │   ├── config/config_test.go
-│   ├── db/mongo.go               # MongoDB connection and lifecycle
+│   ├── db/sqlite.go              # SQLite connection, schema, and inserts
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
 │   │   ├── feedback.go           # POST /nps/api/v1/feedback
@@ -35,7 +37,7 @@ nps-api/
 │   └── model/
 │       ├── feedback.go           # Data model and validation
 │       └── feedback_test.go
-├── test/integration/             # Integration tests (require MongoDB)
+├── test/integration/             # End-to-end tests (embedded SQLite, no external deps)
 ├── docs/feedback-v1.json         # JSON schema
 ├── Dockerfile                    # Multi-stage: golang:1.24-alpine → alpine:3.21
 ├── docker-compose.yml            # Local dev (builds locally, binds 127.0.0.1:8081)
@@ -64,8 +66,7 @@ nps-api/
 ### Local development (without Docker)
 
 ```bash
-cp .env.example .env   # Fill in MONGODB_URI
-go run ./cmd/server
+go run ./cmd/server     # creates ./nps.db in the working directory
 ```
 
 Note: Go does not read `.env` files. Export variables manually or use Docker Compose.
@@ -79,19 +80,17 @@ docker compose up --build
 ### Test
 
 ```bash
-go test ./...                                                          # Unit tests
-MONGODB_URI="mongodb://localhost:27017" go test ./test/integration/ -v  # Integration
+go test ./...   # unit + integration (integration uses a temp SQLite DB, no external deps)
 ```
 
 ## Environment Variables
 
-| Variable            | Default       | Description                    |
-|---------------------|---------------|--------------------------------|
-| PORT                | 8081          | HTTP listen port               |
-| MONGODB_URI         | (empty)       | MongoDB connection string      |
-| MONGODB_DATABASE    | nps           | MongoDB database name          |
-| SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled  |
-| SENTRY_ENVIRONMENT  | development   | Sentry environment tag         |
+| Variable            | Default       | Description                            |
+|---------------------|---------------|----------------------------------------|
+| PORT                | 8081          | HTTP listen port                       |
+| DB_PATH             | nps.db        | SQLite file path (container: /data/nps.db) |
+| SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
+| SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
 ## API Endpoints
 
@@ -122,13 +121,17 @@ See `docs/feedback-v1.json` for the feedback payload schema.
 ## Server-Side Setup
 
 On the server, the deploy directory is `~/nps-api/`. Copy `docker-compose.prod.yml`
-as `docker-compose.yml` and create a `.env` file with the MongoDB connection string:
+as `docker-compose.yml`; a `.env` is optional (only needed to set `SENTRY_DSN`).
+The SQLite database lives in the `nps-data` Docker volume (`/data/nps.db`) and
+survives `docker compose down`.
 
 ```bash
 mkdir -p ~/nps-api
 # Copy docker-compose.prod.yml as docker-compose.yml
-# Create .env with MONGODB_URI and SENTRY_DSN
+# (optional) create .env with SENTRY_DSN
 ```
+
+Full procedure, backup, and troubleshooting: `backend01/docs/runbook-deploy-nps.md`.
 
 ## Related Repositories
 

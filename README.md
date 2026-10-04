@@ -1,14 +1,18 @@
 # nps-api
 
-REST API to collect NPS (Net Promoter Score) feedback from the Idefinity desktop application and store it in MongoDB Atlas.
+REST API to collect NPS (Net Promoter Score) feedback from the `rokdsk` and
+`idefinity` desktop applications and store it in a local SQLite database.
 
 Deployed at `api.ruohomaki.fi/nps` as a Docker container behind Nginx.
 
 ## Prerequisites
 
 - Go 1.24+
-- MongoDB Atlas cluster (or local MongoDB for development)
 - (Optional) Sentry account for error monitoring
+
+No external database is required — SQLite is embedded via the pure-Go
+`modernc.org/sqlite` driver (no CGO), so the service has no network dependency
+for storage.
 
 ## Quick Start
 
@@ -16,13 +20,11 @@ Deployed at `api.ruohomaki.fi/nps` as a Docker container behind Nginx.
 # Clone and configure
 git clone https://github.com/timoruohomaki/nps-api.git
 cd nps-api
-cp .env.example .env
-# Edit .env — set MONGODB_URI at minimum
 
-# Run locally
+# Run locally (creates ./nps.db in the working directory)
 go run ./cmd/server
 
-# Or with Docker
+# Or with Docker (database persisted in the nps-data volume)
 docker compose up --build
 ```
 
@@ -34,8 +36,7 @@ All configuration is via environment variables. See `.env.example` for reference
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MONGODB_URI` | Yes | — | MongoDB connection string |
-| `MONGODB_DATABASE` | No | `nps` | Database name |
+| `DB_PATH` | No | `nps.db` | SQLite database file path (container sets `/data/nps.db`) |
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |
@@ -88,16 +89,17 @@ curl -X POST https://api.ruohomaki.fi/nps/api/v1/feedback \
 ## Development
 
 ```bash
-# Unit tests
+# All tests (unit + integration). Integration tests use a temporary SQLite
+# database — no external service required.
 go test ./...
-
-# Integration tests (requires MongoDB)
-MONGODB_URI="mongodb://localhost:27017" go test ./test/integration/ -v
 ```
 
 ## CI/CD
 
 Push to `main` triggers automated testing, Docker image build, push to `ghcr.io/timoruohomaki/nps-api`, and deployment to the server.
+
+Server-side deployment is documented in the **backend01** repo at
+`docs/runbook-deploy-nps.md`.
 
 ## License
 

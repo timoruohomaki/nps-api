@@ -7,30 +7,24 @@ import (
 
 func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("PORT")
-	os.Unsetenv("MONGODB_URI")
-	os.Unsetenv("MONGODB_DATABASE")
+	os.Unsetenv("DB_PATH")
 
 	cfg := Load()
 
 	if cfg.Port != "8081" {
 		t.Errorf("expected default port 8081, got %s", cfg.Port)
 	}
-	if cfg.MongoDatabase != "nps" {
-		t.Errorf("expected default database nps, got %s", cfg.MongoDatabase)
-	}
-	if cfg.MongoURI != "" {
-		t.Errorf("expected empty MongoURI, got %s", cfg.MongoURI)
+	if cfg.DBPath != "nps.db" {
+		t.Errorf("expected default DBPath nps.db, got %s", cfg.DBPath)
 	}
 }
 
 func TestLoad_FromEnv(t *testing.T) {
 	os.Setenv("PORT", "3000")
-	os.Setenv("MONGODB_URI", "mongodb://localhost:27017")
-	os.Setenv("MONGODB_DATABASE", "testdb")
+	os.Setenv("DB_PATH", "/data/nps.db")
 	defer func() {
 		os.Unsetenv("PORT")
-		os.Unsetenv("MONGODB_URI")
-		os.Unsetenv("MONGODB_DATABASE")
+		os.Unsetenv("DB_PATH")
 	}()
 
 	cfg := Load()
@@ -38,10 +32,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.Port != "3000" {
 		t.Errorf("expected port 3000, got %s", cfg.Port)
 	}
-	if cfg.MongoURI != "mongodb://localhost:27017" {
-		t.Errorf("expected MongoURI mongodb://localhost:27017, got %s", cfg.MongoURI)
-	}
-	if cfg.MongoDatabase != "testdb" {
-		t.Errorf("expected database testdb, got %s", cfg.MongoDatabase)
+	if cfg.DBPath != "/data/nps.db" {
+		t.Errorf("expected DBPath /data/nps.db, got %s", cfg.DBPath)
 	}
 }
