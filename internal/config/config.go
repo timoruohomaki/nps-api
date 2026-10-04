@@ -11,6 +11,7 @@ type Config struct {
 	DBPath          string
 	EncKey          string
 	APIKeys         []string
+	ReadAPIKeys     []string
 	SentryDSN       string
 	SentryEnv       string
 	SentryTraceRate float64
@@ -26,9 +27,12 @@ func Load() *Config {
 		// base64-encoded 32-byte AES-256 key for comment/timezone encryption.
 		// Empty disables encryption (dev); production must set it.
 		EncKey: getEnv("FEEDBACK_ENC_KEY", ""),
-		// Comma-separated accepted X-API-Key values for the feedback endpoint.
+		// Comma-separated accepted X-API-Key values for POSTing feedback.
 		// Empty disables the check (all requests pass).
-		APIKeys:         splitList(getEnv("API_KEYS", "")),
+		APIKeys: splitList(getEnv("API_KEYS", "")),
+		// Comma-separated consumer keys for the GET analytics query, which returns
+		// decrypted PII. Empty = read endpoint disabled (fail closed).
+		ReadAPIKeys:     splitList(getEnv("READ_API_KEYS", "")),
 		SentryDSN:       getEnv("SENTRY_DSN", ""),
 		SentryEnv:       getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryTraceRate: 1.0,

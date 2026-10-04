@@ -37,7 +37,7 @@ func main() {
 	}
 	defer database.Close(context.Background())
 
-	items, err := database.ListFeedback(ctx)
+	items, err := database.ListFeedback(ctx, 0) // 0 = all years
 	if err != nil {
 		fail("read feedback: %v", err)
 	}

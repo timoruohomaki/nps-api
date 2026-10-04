@@ -103,14 +103,26 @@ func (d *Database) InsertFeedback(ctx context.Context, fb *model.Feedback) error
 	return nil
 }
 
-// ListFeedback returns all rows oldest-first, decrypting the comment and
-// timezone fields. Used by the export tool (there is no read HTTP endpoint).
-func (d *Database) ListFeedback(ctx context.Context) ([]model.Feedback, error) {
-	const q = `SELECT id, schema_version, app, app_version, platform, timestamp,
+// ListFeedback returns rows oldest-first, decrypting the comment and timezone
+// fields. A year > 0 restricts results to that calendar year by received_at (the
+// server-authoritative UTC receipt time); year <= 0 returns all rows.
+func (d *Database) ListFeedback(ctx context.Context, year int) ([]model.Feedback, error) {
+	q := `SELECT id, schema_version, app, app_version, platform, timestamp,
         nps_rating, nps_category, timezone, comment, received_at
-        FROM feedback ORDER BY id`
+        FROM feedback`
+	var args []any
 
-	rows, err := d.db.QueryContext(ctx, q)
+	if year > 0 {
+		// received_at is stored as RFC3339Nano UTC (…Z), so a lexicographic range
+		// over the ISO-8601 string selects the calendar year correctly.
+		lo := fmt.Sprintf("%04d-01-01T00:00:00Z", year)
+		hi := fmt.Sprintf("%04d-01-01T00:00:00Z", year+1)
+		q += ` WHERE received_at >= ? AND received_at < ?`
+		args = append(args, lo, hi)
+	}
+	q += ` ORDER BY id`
+
+	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

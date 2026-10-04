@@ -38,7 +38,8 @@ All configuration is via environment variables. See `.env.example` for reference
 |---|---|---|---|
 | `DB_PATH` | No | `nps.db` | SQLite database file path (container sets `/data/nps.db`) |
 | `FEEDBACK_ENC_KEY` | Prod | — | base64 32-byte AES-256 key; encrypts `comment`/`timezone` at rest. Empty = unencrypted (dev only) |
-| `API_KEYS` | No | — | Comma-separated accepted `X-API-Key` values for the feedback endpoint. Empty = open |
+| `API_KEYS` | No | — | Comma-separated accepted `X-API-Key` values for POSTing feedback. Empty = open |
+| `READ_API_KEYS` | Analytics | — | Comma-separated consumer keys for the GET query (returns decrypted PII). Empty = read endpoint disabled (503) |
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |
@@ -95,6 +96,26 @@ When `API_KEYS` is set, requests to this endpoint must send a matching
 `X-API-Key` header or receive `401`. The health check is always open. With
 `API_KEYS` empty the endpoint accepts requests without a key (backward
 compatible) and logs a warning at startup.
+
+### Query Feedback (analytics)
+
+```
+GET /nps/api/v1/feedback?year=2026
+X-API-Key: <consumer key>
+```
+
+Returns a JSON array of feedback with the PII fields **decrypted**, so it is
+gated by a separate consumer key set (`READ_API_KEYS`) and is **fail-closed**:
+with `READ_API_KEYS` empty the endpoint returns `503`. The optional `year`
+filters by receipt year (`received_at`, UTC). Used by the R analytics project in
+backend01's `analytics/`.
+
+| Status | Description |
+|---|---|
+| `200 OK` | JSON array of feedback (possibly empty `[]`) |
+| `400 Bad Request` | Invalid `year` |
+| `401 Unauthorized` | Missing/invalid consumer `X-API-Key` |
+| `503 Service Unavailable` | `READ_API_KEYS` not configured (endpoint disabled) |
 
 **Example request:**
 

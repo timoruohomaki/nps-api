@@ -39,12 +39,17 @@ func main() {
 	defer cleanup()
 
 	if len(cfg.APIKeys) == 0 {
-		slog.Warn("API_KEYS not set — feedback endpoint accepts requests without an API key")
+		slog.Warn("API_KEYS not set — feedback POST accepts requests without an API key")
 	} else {
-		slog.Info("API key auth enabled", "keys", len(cfg.APIKeys))
+		slog.Info("API key auth enabled for POST", "keys", len(cfg.APIKeys))
+	}
+	if len(cfg.ReadAPIKeys) == 0 {
+		slog.Warn("READ_API_KEYS not set — GET feedback (analytics) endpoint is disabled")
+	} else {
+		slog.Info("analytics read endpoint enabled", "keys", len(cfg.ReadAPIKeys))
 	}
 
-	mux := handler.RegisterRoutes(database, cfg.APIKeys)
+	mux := handler.RegisterRoutes(database, cfg.APIKeys, cfg.ReadAPIKeys)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

@@ -36,7 +36,7 @@ nps-api/
 │   ├── db/sqlite.go              # SQLite connection, schema, inserts, decrypting reads
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
-│   │   ├── feedback.go           # POST /nps/api/v1/feedback
+│   │   ├── feedback.go           # POST (submit) + GET (analytics query) feedback
 │   │   ├── health.go             # GET /nps/health + JSON helpers
 │   │   └── handler_test.go       # Unit tests
 │   ├── middleware/logging.go     # Request logging (method, path, status, duration)
@@ -97,7 +97,8 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 | PORT                | 8081          | HTTP listen port                       |
 | DB_PATH             | nps.db        | SQLite file path (container: /data/nps.db) |
 | FEEDBACK_ENC_KEY    | (empty)       | base64 32-byte AES-256 key; encrypts comment/timezone at rest. Empty = unencrypted + warning; malformed = fail to start |
-| API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values. Empty = feedback endpoint open |
+| API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values for POST. Empty = open |
+| READ_API_KEYS       | (empty)       | Comma-separated consumer keys for GET analytics query. Empty = read endpoint disabled (503) |
 | SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
 | SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
@@ -105,10 +106,11 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 
 All endpoints are prefixed with `/nps`:
 
-| Method | Path                      | Description                   | Auth                       |
-|--------|---------------------------|-------------------------------|----------------------------|
-| GET    | /nps/health               | Health check + timestamp      | open                       |
-| POST   | /nps/api/v1/feedback      | Submit NPS feedback           | X-API-Key if API_KEYS set  |
+| Method | Path                           | Description                        | Auth                          |
+|--------|--------------------------------|------------------------------------|-------------------------------|
+| GET    | /nps/health                    | Health check + timestamp           | open                          |
+| POST   | /nps/api/v1/feedback           | Submit NPS feedback                | X-API-Key if API_KEYS set     |
+| GET    | /nps/api/v1/feedback[?year=]   | Query feedback (decrypted) for analytics | consumer X-API-Key; 503 if READ_API_KEYS unset |
 
 See `docs/feedback-v1.json` for the feedback payload schema.
 

@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -32,11 +33,11 @@ func testKey(t *testing.T) string {
 
 func newTestServer(t *testing.T) (*httptest.Server, *db.Database) {
 	t.Helper()
-	// No API keys: auth disabled for the storage/encryption tests below.
-	return newTestServerWithKeys(t, nil)
+	// No keys: write-auth disabled, read endpoint disabled (not exercised here).
+	return newTestServerWithKeys(t, nil, nil)
 }
 
-func newTestServerWithKeys(t *testing.T, apiKeys []string) (*httptest.Server, *db.Database) {
+func newTestServerWithKeys(t *testing.T, apiKeys, readKeys []string) (*httptest.Server, *db.Database) {
 	t.Helper()
 
 	enc, err := crypto.New(testKey(t))
@@ -51,7 +52,7 @@ func newTestServerWithKeys(t *testing.T, apiKeys []string) (*httptest.Server, *d
 	}
 	t.Cleanup(func() { database.Close(context.Background()) })
 
-	srv := httptest.NewServer(handler.RegisterRoutes(database, apiKeys))
+	srv := httptest.NewServer(handler.RegisterRoutes(database, apiKeys, readKeys))
 	t.Cleanup(srv.Close)
 
 	return srv, database
@@ -86,7 +87,7 @@ func postFeedback(t *testing.T, url, apiKey string) *http.Response {
 }
 
 func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
-	srv, _ := newTestServerWithKeys(t, []string{"secret-key-1", "secret-key-2"})
+	srv, _ := newTestServerWithKeys(t, []string{"secret-key-1", "secret-key-2"}, nil)
 
 	t.Run("valid key accepted", func(t *testing.T) {
 		resp := postFeedback(t, srv.URL, "secret-key-2")
@@ -125,12 +126,101 @@ func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
 }
 
 func TestAPIKey_OpenWhenUnset(t *testing.T) {
-	srv, _ := newTestServerWithKeys(t, nil)
+	srv, _ := newTestServerWithKeys(t, nil, nil)
 	resp := postFeedback(t, srv.URL, "")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Errorf("expected 201 with auth disabled, got %d", resp.StatusCode)
 	}
+}
+
+func getFeedback(t *testing.T, url, query, apiKey string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url+"/nps/api/v1/feedback"+query, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	return resp
+}
+
+func TestReadEndpoint_DisabledWithoutReadKey(t *testing.T) {
+	// Write enabled, read keys unset => GET is fail-closed (503).
+	srv, _ := newTestServerWithKeys(t, nil, nil)
+	resp := getFeedback(t, srv.URL, "", "anything")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when READ_API_KEYS unset, got %d", resp.StatusCode)
+	}
+}
+
+func TestReadEndpoint_AuthAndQuery(t *testing.T) {
+	readKey := "consumer-key"
+	srv, _ := newTestServerWithKeys(t, nil, []string{readKey})
+
+	// Seed: two 2026 rows (via POST) — received_at is "now", so filtering by the
+	// current year must include them and a past year must exclude them.
+	for i := 0; i < 2; i++ {
+		resp := postFeedback(t, srv.URL, "")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("seed POST %d: got %d", i, resp.StatusCode)
+		}
+	}
+
+	t.Run("missing key rejected", func(t *testing.T) {
+		resp := getFeedback(t, srv.URL, "", "")
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 without key, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("valid key returns decrypted rows", func(t *testing.T) {
+		resp := getFeedback(t, srv.URL, "", readKey)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+		var items []map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(items) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(items))
+		}
+		if items[0]["comment"] != "auth test" {
+			t.Errorf("comment not decrypted in response: %v", items[0]["comment"])
+		}
+	})
+
+	t.Run("year filter excludes other years", func(t *testing.T) {
+		// 2000 is valid but before any feedback existed (received_at is "now").
+		resp := getFeedback(t, srv.URL, "?year=2000", readKey)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+		var items []map[string]any
+		json.NewDecoder(resp.Body).Decode(&items)
+		if len(items) != 0 {
+			t.Errorf("expected 0 rows for year=2000, got %d", len(items))
+		}
+	})
+
+	t.Run("invalid year rejected", func(t *testing.T) {
+		resp := getFeedback(t, srv.URL, "?year=abc", readKey)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("expected 400 for bad year, got %d", resp.StatusCode)
+		}
+	})
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -196,7 +286,7 @@ func TestSubmitFeedback_StoresRow(t *testing.T) {
 	}
 
 	// ListFeedback must decrypt it back to the original.
-	items, err := database.ListFeedback(context.Background())
+	items, err := database.ListFeedback(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("list feedback: %v", err)
 	}

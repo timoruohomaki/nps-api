@@ -14,10 +14,14 @@ services:
       # (comment, timezone) at rest. Empty => stored unencrypted (logged as a
       # warning). Generate: openssl rand -base64 32
       - FEEDBACK_ENC_KEY=${FEEDBACK_ENC_KEY:-}
-      # Comma-separated accepted X-API-Key values for the feedback endpoint.
+      # Comma-separated accepted X-API-Key values for POSTing feedback.
       # Empty => endpoint is open (requests pass without a key). Enable only once
       # BOTH clients send a matching key (see runbook rollout note).
       - API_KEYS=${API_KEYS:-}
+      # Comma-separated CONSUMER keys for the GET analytics query (returns
+      # decrypted PII). Empty => the read endpoint is disabled (503). Keep these
+      # distinct from API_KEYS so a client key can't read everyone's feedback.
+      - READ_API_KEYS=${READ_API_KEYS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=production
     volumes:
