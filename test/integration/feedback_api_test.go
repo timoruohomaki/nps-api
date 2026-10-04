@@ -8,21 +8,38 @@ package integration
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/idefinity/nps-api/internal/crypto"
 	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/handler"
 )
 
+func testKey(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
 func newTestServer(t *testing.T) (*httptest.Server, *db.Database) {
 	t.Helper()
 
+	enc, err := crypto.New(testKey(t))
+	if err != nil {
+		t.Fatalf("cipher: %v", err)
+	}
+
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Connect(context.Background(), dbPath)
+	database, err := db.Connect(context.Background(), dbPath, enc)
 	if err != nil {
 		t.Fatalf("db connect: %v", err)
 	}
@@ -80,6 +97,29 @@ func TestSubmitFeedback_StoresRow(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 stored row, got %d", count)
+	}
+
+	// The comment must be encrypted AT REST: reading the raw column must not
+	// reveal the plaintext.
+	var rawComment string
+	if err := database.DB().QueryRowContext(context.Background(),
+		`SELECT comment FROM feedback WHERE app = ?`, "rokdsk").Scan(&rawComment); err != nil {
+		t.Fatalf("query raw comment: %v", err)
+	}
+	if strings.Contains(rawComment, "integration test") {
+		t.Errorf("comment stored in plaintext: %q", rawComment)
+	}
+	if !strings.HasPrefix(rawComment, "enc:v1:") {
+		t.Errorf("comment not encrypted, raw value: %q", rawComment)
+	}
+
+	// ListFeedback must decrypt it back to the original.
+	items, err := database.ListFeedback(context.Background())
+	if err != nil {
+		t.Fatalf("list feedback: %v", err)
+	}
+	if len(items) != 1 || items[0].Comment != "integration test" {
+		t.Errorf("decrypted comment mismatch: %+v", items)
 	}
 }
 

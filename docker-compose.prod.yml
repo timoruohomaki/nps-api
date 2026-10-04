@@ -10,6 +10,10 @@ services:
     environment:
       - PORT=8081
       - DB_PATH=/data/nps.db
+      # base64 32-byte AES-256 key — REQUIRED in production to encrypt PII
+      # (comment, timezone) at rest. Empty => stored unencrypted (logged as a
+      # warning). Generate: openssl rand -base64 32
+      - FEEDBACK_ENC_KEY=${FEEDBACK_ENC_KEY:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=production
     volumes:

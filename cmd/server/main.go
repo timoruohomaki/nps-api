@@ -11,6 +11,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/idefinity/nps-api/internal/config"
+	"github.com/idefinity/nps-api/internal/crypto"
 	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/handler"
 	"github.com/idefinity/nps-api/internal/middleware"
@@ -21,7 +22,20 @@ func main() {
 
 	initSentry(cfg)
 
-	database, cleanup := connectDB(cfg)
+	enc, err := crypto.New(cfg.EncKey)
+	if err != nil {
+		// A configured-but-malformed key must not silently fall back to
+		// plaintext — fail closed.
+		slog.Error("invalid FEEDBACK_ENC_KEY", "error", err)
+		os.Exit(1)
+	}
+	if !enc.Enabled() {
+		slog.Warn("FEEDBACK_ENC_KEY not set — feedback comment/timezone stored UNENCRYPTED")
+	} else {
+		slog.Info("field encryption enabled", "fields", "comment,timezone")
+	}
+
+	database, cleanup := connectDB(cfg, enc)
 	defer cleanup()
 
 	mux := handler.RegisterRoutes(database)
@@ -60,11 +74,11 @@ func initSentry(cfg *config.Config) {
 	slog.Info("Sentry initialized", "environment", cfg.SentryEnv)
 }
 
-func connectDB(cfg *config.Config) (*db.Database, func()) {
+func connectDB(cfg *config.Config, enc *crypto.Cipher) (*db.Database, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	database, err := db.Connect(ctx, cfg.DBPath)
+	database, err := db.Connect(ctx, cfg.DBPath, enc)
 	if err != nil {
 		slog.Error("database connection failed", "error", err)
 		os.Exit(1)

@@ -16,6 +16,9 @@ runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deplo
 - **Database:** Local SQLite via `modernc.org/sqlite` (pure-Go, no CGO). One
   `feedback` table; file persisted in a Docker volume at `/data/nps.db`. No
   external database or network dependency.
+- **PII encryption:** the `comment` and `timezone` columns are encrypted at rest
+  with AES-256-GCM (`internal/crypto`, key from `FEEDBACK_ENC_KEY`) before being
+  written. Metadata columns stay plaintext/queryable. Decrypt via `cmd/export`.
 - **Monitoring:** Sentry (`github.com/getsentry/sentry-go`) — optional, enabled via SENTRY_DSN
 - **Deployment:** Docker container on port 8081, reverse-proxied by Nginx
 
@@ -23,11 +26,14 @@ runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deplo
 
 ```
 nps-api/
-├── cmd/server/main.go            # Entry point — wires config, Sentry, DB, server
+├── cmd/server/main.go            # Entry point — wires config, Sentry, crypto, DB, server
+├── cmd/export/main.go            # Exports decrypted feedback as JSON (no read HTTP endpoint)
 ├── internal/
 │   ├── config/config.go          # Environment-based configuration
 │   ├── config/config_test.go
-│   ├── db/sqlite.go              # SQLite connection, schema, and inserts
+│   ├── crypto/crypto.go          # AES-256-GCM field encryption for PII columns
+│   ├── crypto/crypto_test.go
+│   ├── db/sqlite.go              # SQLite connection, schema, inserts, decrypting reads
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
 │   │   ├── feedback.go           # POST /nps/api/v1/feedback
@@ -89,6 +95,7 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 |---------------------|---------------|----------------------------------------|
 | PORT                | 8081          | HTTP listen port                       |
 | DB_PATH             | nps.db        | SQLite file path (container: /data/nps.db) |
+| FEEDBACK_ENC_KEY    | (empty)       | base64 32-byte AES-256 key; encrypts comment/timezone at rest. Empty = unencrypted + warning; malformed = fail to start |
 | SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
 | SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
@@ -121,14 +128,16 @@ See `docs/feedback-v1.json` for the feedback payload schema.
 ## Server-Side Setup
 
 On the server, the deploy directory is `~/nps-api/`. Copy `docker-compose.prod.yml`
-as `docker-compose.yml`; a `.env` is optional (only needed to set `SENTRY_DSN`).
-The SQLite database lives in the `nps-data` Docker volume (`/data/nps.db`) and
-survives `docker compose down`.
+as `docker-compose.yml` and create `~/nps-api/.env` with at least
+`FEEDBACK_ENC_KEY` (and optionally `SENTRY_DSN`). The SQLite database lives in the
+`nps-data` Docker volume (`/data/nps.db`) and survives `docker compose down`.
 
 ```bash
 mkdir -p ~/nps-api
 # Copy docker-compose.prod.yml as docker-compose.yml
-# (optional) create .env with SENTRY_DSN
+echo "FEEDBACK_ENC_KEY=$(openssl rand -base64 32)" > ~/nps-api/.env
+chmod 600 ~/nps-api/.env
+# back up that key somewhere safe — losing it makes comments unrecoverable
 ```
 
 Full procedure, backup, and troubleshooting: `backend01/docs/runbook-deploy-nps.md`.

@@ -9,6 +9,7 @@ services:
     environment:
       - PORT=8081
       - DB_PATH=/data/nps.db
+      - FEEDBACK_ENC_KEY=${FEEDBACK_ENC_KEY:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=development
     volumes:

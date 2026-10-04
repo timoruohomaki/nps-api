@@ -6,6 +6,7 @@ import "os"
 type Config struct {
 	Port            string
 	DBPath          string
+	EncKey          string
 	SentryDSN       string
 	SentryEnv       string
 	SentryTraceRate float64
@@ -17,7 +18,10 @@ func Load() *Config {
 		Port: getEnv("PORT", "8081"),
 		// Default is relative (cwd) so `go run ./cmd/server` works out of the
 		// box; the container sets DB_PATH=/data/nps.db onto a persistent volume.
-		DBPath:          getEnv("DB_PATH", "nps.db"),
+		DBPath: getEnv("DB_PATH", "nps.db"),
+		// base64-encoded 32-byte AES-256 key for comment/timezone encryption.
+		// Empty disables encryption (dev); production must set it.
+		EncKey:          getEnv("FEEDBACK_ENC_KEY", ""),
 		SentryDSN:       getEnv("SENTRY_DSN", ""),
 		SentryEnv:       getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryTraceRate: 1.0,

@@ -8,12 +8,15 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGO)
 
+	"github.com/idefinity/nps-api/internal/crypto"
 	"github.com/idefinity/nps-api/internal/model"
 )
 
-// Database wraps a SQLite connection pool.
+// Database wraps a SQLite connection pool and the field cipher used to encrypt
+// PII columns (comment, timezone) at rest.
 type Database struct {
-	db *sql.DB
+	db  *sql.DB
+	enc *crypto.Cipher
 }
 
 // schema is applied on every start; CREATE TABLE IF NOT EXISTS makes it
@@ -34,8 +37,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 );`
 
 // Connect opens the SQLite database at path, verifies it, and applies the
-// schema. The file (and its -wal/-shm siblings) are created if absent.
-func Connect(ctx context.Context, path string) (*Database, error) {
+// schema. The file (and its -wal/-shm siblings) are created if absent. enc is the
+// field cipher for PII columns; pass a passthrough cipher to disable encryption.
+func Connect(ctx context.Context, path string, enc *crypto.Cipher) (*Database, error) {
 	if path == "" {
 		return nil, fmt.Errorf("DB_PATH is not set")
 	}
@@ -63,11 +67,22 @@ func Connect(ctx context.Context, path string) (*Database, error) {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
-	return &Database{db: sqlDB}, nil
+	return &Database{db: sqlDB, enc: enc}, nil
 }
 
-// InsertFeedback stores one feedback row and sets fb.ID to the new row id.
+// InsertFeedback stores one feedback row and sets fb.ID to the new row id. The
+// comment and timezone fields are encrypted at rest; the caller's struct is not
+// mutated (fb.Comment/fb.Timezone stay plaintext).
 func (d *Database) InsertFeedback(ctx context.Context, fb *model.Feedback) error {
+	encComment, err := d.enc.Encrypt(fb.Comment)
+	if err != nil {
+		return fmt.Errorf("encrypt comment: %w", err)
+	}
+	encTimezone, err := d.enc.Encrypt(fb.Timezone)
+	if err != nil {
+		return fmt.Errorf("encrypt timezone: %w", err)
+	}
+
 	const q = `INSERT INTO feedback
         (schema_version, app, app_version, platform, timestamp,
          nps_rating, nps_category, timezone, comment, received_at)
@@ -75,7 +90,7 @@ func (d *Database) InsertFeedback(ctx context.Context, fb *model.Feedback) error
 
 	res, err := d.db.ExecContext(ctx, q,
 		fb.SchemaVersion, fb.App, fb.AppVersion, fb.Platform, fb.Timestamp,
-		fb.NPSRating, fb.NPSCategory, fb.Timezone, fb.Comment,
+		fb.NPSRating, fb.NPSCategory, encTimezone, encComment,
 		fb.ReceivedAt.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
@@ -86,6 +101,47 @@ func (d *Database) InsertFeedback(ctx context.Context, fb *model.Feedback) error
 		fb.ID = id
 	}
 	return nil
+}
+
+// ListFeedback returns all rows oldest-first, decrypting the comment and
+// timezone fields. Used by the export tool (there is no read HTTP endpoint).
+func (d *Database) ListFeedback(ctx context.Context) ([]model.Feedback, error) {
+	const q = `SELECT id, schema_version, app, app_version, platform, timestamp,
+        nps_rating, nps_category, timezone, comment, received_at
+        FROM feedback ORDER BY id`
+
+	rows, err := d.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []model.Feedback
+	for rows.Next() {
+		var (
+			fb         model.Feedback
+			tz         string
+			comment    string
+			receivedAt string
+		)
+		if err := rows.Scan(
+			&fb.ID, &fb.SchemaVersion, &fb.App, &fb.AppVersion, &fb.Platform,
+			&fb.Timestamp, &fb.NPSRating, &fb.NPSCategory, &tz, &comment, &receivedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if fb.Timezone, err = d.enc.Decrypt(tz); err != nil {
+			return nil, fmt.Errorf("decrypt timezone (id %d): %w", fb.ID, err)
+		}
+		if fb.Comment, err = d.enc.Decrypt(comment); err != nil {
+			return nil, fmt.Errorf("decrypt comment (id %d): %w", fb.ID, err)
+		}
+		fb.ReceivedAt, _ = time.Parse(time.RFC3339Nano, receivedAt)
+
+		out = append(out, fb)
+	}
+	return out, rows.Err()
 }
 
 // Ping verifies the database is reachable.
