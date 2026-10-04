@@ -11,6 +11,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/idefinity/nps-api/internal/config"
+	"github.com/idefinity/nps-api/internal/crypto"
 	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/handler"
 	"github.com/idefinity/nps-api/internal/middleware"
@@ -24,19 +25,40 @@ func main() {
 
 	initSentry(cfg)
 
-	database, cleanup := connectMongo(cfg)
+	enc, err := crypto.New(cfg.EncKey)
+	if err != nil {
+		// A configured-but-malformed key must not silently fall back to
+		// plaintext — fail closed.
+		slog.Error("invalid FEEDBACK_ENC_KEY", "error", err)
+		os.Exit(1)
+	}
+	if !enc.Enabled() {
+		slog.Warn("FEEDBACK_ENC_KEY not set — feedback comment/timezone stored UNENCRYPTED")
+	} else {
+		slog.Info("field encryption enabled", "fields", "comment,timezone")
+	}
+
+	database, cleanup := connectDB(cfg, enc)
 	defer cleanup()
 
-	mux := handler.RegisterRoutes(database)
-
-	authMW := middleware.APIKey(cfg.APIKeys, []string{"/nps/api/"})
-	if len(cfg.APIKeys) > 0 {
-		slog.Info("X-API-Key auth enabled", "keys_configured", len(cfg.APIKeys))
+	if len(cfg.APIKeys) == 0 {
+		slog.Warn("API_KEYS not set — feedback POST accepts requests without an API key")
+	} else {
+		slog.Info("API key auth enabled for POST", "keys", len(cfg.APIKeys))
 	}
+	if len(cfg.ReadAPIKeys) == 0 {
+		slog.Warn("READ_API_KEYS not set — GET feedback (analytics) endpoint is disabled")
+	} else {
+		slog.Info("analytics read endpoint enabled", "keys", len(cfg.ReadAPIKeys))
+	}
+
+	// Auth is applied per-route inside RegisterRoutes (POST gated by API_KEYS,
+	// GET gated fail-closed by READ_API_KEYS); only request logging wraps the mux.
+	mux := handler.RegisterRoutes(database, cfg.APIKeys, cfg.ReadAPIKeys)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      middleware.Logging(authMW(mux)),
+		Handler:      middleware.Logging(mux),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -68,16 +90,16 @@ func initSentry(cfg *config.Config) {
 	slog.Info("Sentry initialized", "environment", cfg.SentryEnv)
 }
 
-func connectMongo(cfg *config.Config) (*db.Database, func()) {
+func connectDB(cfg *config.Config, enc *crypto.Cipher) (*db.Database, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	database, err := db.Connect(ctx, cfg.MongoURI, cfg.MongoDatabase)
+	database, err := db.Connect(ctx, cfg.DBPath, enc)
 	if err != nil {
-		slog.Error("MongoDB connection failed", "error", err)
+		slog.Error("database connection failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("connected to MongoDB")
+	slog.Info("database ready", "path", cfg.DBPath)
 
 	cleanup := func() {
 		sentry.Flush(2 * time.Second)

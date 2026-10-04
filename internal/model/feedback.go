@@ -5,27 +5,25 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // Feedback represents an NPS feedback submission.
 type Feedback struct {
-	ID            bson.ObjectID `bson:"_id,omitempty"      json:"id,omitempty"`
-	SchemaVersion string        `bson:"schema_version"     json:"schema_version"`
-	App           string        `bson:"app"                json:"app"`
-	AppVersion    string        `bson:"app_version"        json:"app_version"`
-	Platform      string        `bson:"platform"           json:"platform"`
-	Timestamp     string        `bson:"timestamp"          json:"timestamp"`
-	NPSRating     int           `bson:"nps_rating"         json:"nps_rating"`
-	NPSCategory   string        `bson:"nps_category"       json:"nps_category"`
-	Timezone      string        `bson:"timezone,omitempty" json:"timezone,omitempty"`
-	Comment       string        `bson:"comment,omitempty"  json:"comment,omitempty"`
-	ReceivedAt    time.Time     `bson:"received_at"        json:"received_at"`
+	ID            int64     `json:"id,omitempty"`
+	SchemaVersion string    `json:"schema_version"`
+	App           string    `json:"app"`
+	AppVersion    string    `json:"app_version"`
+	Platform      string    `json:"platform"`
+	Timestamp     string    `json:"timestamp"`
+	NPSRating     int       `json:"nps_rating"`
+	NPSCategory   string    `json:"nps_category"`
+	Timezone      string    `json:"timezone,omitempty"`
+	Comment       string    `json:"comment,omitempty"`
+	ReceivedAt    time.Time `json:"received_at"`
 }
 
 var (
-	platformsMu     sync.RWMutex
+	platformsMu      sync.RWMutex
 	allowedPlatforms = map[string]bool{
 		"macOS":   true,
 		"Windows": true,

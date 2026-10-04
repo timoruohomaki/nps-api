@@ -2,18 +2,23 @@
 
 ## Project Overview
 
-REST API to collect NPS (Net Promoter Score) feedback from the Idefinity desktop
-application. Deployed as a Docker container at `api.ruohomaki.fi/nps` behind an
-Nginx reverse proxy.
+REST API to collect NPS (Net Promoter Score) feedback from the `rokdsk` and
+`idefinity` desktop applications. Deployed as a Docker container at
+`api.ruohomaki.fi/nps` behind an Nginx reverse proxy.
 
 Infrastructure context lives in the `backend01` repository (Nginx configs, SSL,
-runbooks, deployment scripts).
+runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deploy-nps.md`.
 
 ## Architecture
 
 - **Language:** Go 1.24+
 - **Router:** Standard library `net/http` (Go 1.22+ routing patterns)
-- **Database:** MongoDB Atlas (cloud) via `go.mongodb.org/mongo-driver/v2`
+- **Database:** Local SQLite via `modernc.org/sqlite` (pure-Go, no CGO). One
+  `feedback` table; file persisted in a Docker volume at `/data/nps.db`. No
+  external database or network dependency.
+- **PII encryption:** the `comment` and `timezone` columns are encrypted at rest
+  with AES-256-GCM (`internal/crypto`, key from `FEEDBACK_ENC_KEY`) before being
+  written. Metadata columns stay plaintext/queryable. Decrypt via `cmd/export`.
 - **Monitoring:** Sentry (`github.com/getsentry/sentry-go`) — optional, enabled via SENTRY_DSN
 - **Deployment:** Docker container on port 8081, reverse-proxied by Nginx
 
@@ -21,22 +26,25 @@ runbooks, deployment scripts).
 
 ```
 nps-api/
-├── cmd/server/main.go            # Entry point — wires config, Sentry, DB, server
+├── cmd/server/main.go            # Entry point — wires config, Sentry, crypto, DB, server
+├── cmd/export/main.go            # Exports decrypted feedback as JSON (no read HTTP endpoint)
 ├── internal/
 │   ├── config/config.go          # Environment-based configuration
 │   ├── config/config_test.go
-│   ├── db/mongo.go               # MongoDB connection and lifecycle
+│   ├── crypto/crypto.go          # AES-256-GCM field encryption for PII columns
+│   ├── crypto/crypto_test.go
+│   ├── db/sqlite.go              # SQLite connection, schema, inserts, decrypting reads
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
-│   │   ├── feedback.go           # POST /nps/api/v1/feedback
+│   │   ├── feedback.go           # POST (submit) + GET (analytics query) feedback
 │   │   ├── health.go             # GET /nps/health + JSON helpers
 │   │   └── handler_test.go       # Unit tests
 │   ├── middleware/logging.go     # Request logging (method, path, status, duration)
-│   ├── middleware/apikey.go      # Optional X-API-Key check on /nps/api/* (no-op if API_KEYS empty)
+│   ├── middleware/auth.go        # X-API-Key check for the feedback endpoint
 │   └── model/
 │       ├── feedback.go           # Data model and validation
 │       └── feedback_test.go
-├── test/integration/             # Integration tests (require MongoDB)
+├── test/integration/             # End-to-end tests (embedded SQLite, no external deps)
 ├── docs/feedback-v1.json         # JSON schema
 ├── Dockerfile                    # Multi-stage: golang:1.24-alpine → alpine:3.21
 ├── docker-compose.yml            # Local dev (builds locally, binds 127.0.0.1:8081)
@@ -65,8 +73,7 @@ nps-api/
 ### Local development (without Docker)
 
 ```bash
-cp .env.example .env   # Fill in MONGODB_URI
-go run ./cmd/server
+go run ./cmd/server     # creates ./nps.db in the working directory
 ```
 
 Note: Go does not read `.env` files. Export variables manually or use Docker Compose.
@@ -80,30 +87,31 @@ docker compose up --build
 ### Test
 
 ```bash
-go test ./...                                                          # Unit tests
-MONGODB_URI="mongodb://localhost:27017" go test ./test/integration/ -v  # Integration
+go test ./...   # unit + integration (integration uses a temp SQLite DB, no external deps)
 ```
 
 ## Environment Variables
 
-| Variable            | Default          | Description                                                      |
-|---------------------|------------------|------------------------------------------------------------------|
-| PORT                | 8081             | HTTP listen port                                                 |
-| MONGODB_URI         | (empty)          | MongoDB connection string                                        |
-| MONGODB_DATABASE    | nps              | MongoDB database name                                            |
-| SENTRY_DSN          | (empty)          | Sentry DSN — empty = disabled                                    |
-| SENTRY_ENVIRONMENT  | development      | Sentry environment tag                                           |
-| ALLOWED_PLATFORMS   | macOS,Windows    | CSV allowlist for `platform` field — widen for mobile/web clients |
-| API_KEYS            | (empty)          | CSV allowlist for `X-API-Key` header — empty = open (back-compat) |
+| Variable            | Default       | Description                            |
+|---------------------|---------------|----------------------------------------|
+| PORT                | 8081          | HTTP listen port                       |
+| DB_PATH             | nps.db        | SQLite file path (container: /data/nps.db) |
+| FEEDBACK_ENC_KEY    | (empty)       | base64 32-byte AES-256 key; encrypts comment/timezone at rest. Empty = unencrypted + warning; malformed = fail to start |
+| API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values for POST. Empty = open |
+| READ_API_KEYS       | (empty)       | Comma-separated consumer keys for GET analytics query. Empty = read endpoint disabled (503) |
+| ALLOWED_PLATFORMS   | macOS,Windows | Comma-separated allowlist for the `platform` field (set via model.SetAllowedPlatforms at startup) |
+| SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
+| SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
 ## API Endpoints
 
 All endpoints are prefixed with `/nps`:
 
-| Method | Path                      | Description                   |
-|--------|---------------------------|-------------------------------|
-| GET    | /nps/health               | Health check + timestamp      |
-| POST   | /nps/api/v1/feedback      | Submit NPS feedback           |
+| Method | Path                           | Description                        | Auth                          |
+|--------|--------------------------------|------------------------------------|-------------------------------|
+| GET    | /nps/health                    | Health check + timestamp           | open                          |
+| POST   | /nps/api/v1/feedback           | Submit NPS feedback                | X-API-Key if API_KEYS set     |
+| GET    | /nps/api/v1/feedback[?year=]   | Query feedback (decrypted) for analytics | consumer X-API-Key; 503 if READ_API_KEYS unset |
 
 See `docs/feedback-v1.json` for the feedback payload schema.
 
@@ -125,13 +133,19 @@ See `docs/feedback-v1.json` for the feedback payload schema.
 ## Server-Side Setup
 
 On the server, the deploy directory is `~/nps-api/`. Copy `docker-compose.prod.yml`
-as `docker-compose.yml` and create a `.env` file with the MongoDB connection string:
+as `docker-compose.yml` and create `~/nps-api/.env` with at least
+`FEEDBACK_ENC_KEY` (and optionally `SENTRY_DSN`). The SQLite database lives in the
+`nps-data` Docker volume (`/data/nps.db`) and survives `docker compose down`.
 
 ```bash
 mkdir -p ~/nps-api
 # Copy docker-compose.prod.yml as docker-compose.yml
-# Create .env with MONGODB_URI and SENTRY_DSN
+echo "FEEDBACK_ENC_KEY=$(openssl rand -base64 32)" > ~/nps-api/.env
+chmod 600 ~/nps-api/.env
+# back up that key somewhere safe — losing it makes comments unrecoverable
 ```
+
+Full procedure, backup, and troubleshooting: `backend01/docs/runbook-deploy-nps.md`.
 
 ## Related Repositories
 

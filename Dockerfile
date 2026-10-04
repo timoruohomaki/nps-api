@@ -7,14 +7,15 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build
+# Copy source and build both the server and the export tool
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app ./cmd/server \
+    && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /export ./cmd/export
 
 # ----- Runtime stage -----
 FROM alpine:3.21
 
-# Add CA certificates for outbound HTTPS and a non-root user
+# Add CA certificates for outbound HTTPS (Sentry) and a non-root user
 RUN apk --no-cache add ca-certificates \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
@@ -22,6 +23,13 @@ RUN apk --no-cache add ca-certificates \
 WORKDIR /home/appuser
 
 COPY --from=builder /app .
+COPY --from=builder /export .
+
+# SQLite data directory, owned by the runtime user. Mount a volume here to
+# persist the database across container recreates (see docker-compose.prod.yml).
+RUN mkdir -p /data && chown appuser:appgroup /data
+VOLUME ["/data"]
+ENV DB_PATH=/data/nps.db
 
 USER appuser
 
