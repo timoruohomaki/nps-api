@@ -15,10 +15,13 @@ import (
 	"github.com/idefinity/nps-api/internal/db"
 	"github.com/idefinity/nps-api/internal/handler"
 	"github.com/idefinity/nps-api/internal/middleware"
+	"github.com/idefinity/nps-api/internal/model"
 )
 
 func main() {
 	cfg := config.Load()
+
+	model.SetAllowedPlatforms(cfg.AllowedPlatforms)
 
 	initSentry(cfg)
 
@@ -49,6 +52,8 @@ func main() {
 		slog.Info("analytics read endpoint enabled", "keys", len(cfg.ReadAPIKeys))
 	}
 
+	// Auth is applied per-route inside RegisterRoutes (POST gated by API_KEYS,
+	// GET gated fail-closed by READ_API_KEYS); only request logging wraps the mux.
 	mux := handler.RegisterRoutes(database, cfg.APIKeys, cfg.ReadAPIKeys)
 
 	srv := &http.Server{

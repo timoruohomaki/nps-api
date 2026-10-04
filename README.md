@@ -40,6 +40,7 @@ All configuration is via environment variables. See `.env.example` for reference
 | `FEEDBACK_ENC_KEY` | Prod | — | base64 32-byte AES-256 key; encrypts `comment`/`timezone` at rest. Empty = unencrypted (dev only) |
 | `API_KEYS` | No | — | Comma-separated accepted `X-API-Key` values for POSTing feedback. Empty = open |
 | `READ_API_KEYS` | Analytics | — | Comma-separated consumer keys for the GET query (returns decrypted PII). Empty = read endpoint disabled (503) |
+| `ALLOWED_PLATFORMS` | No | `macOS,Windows` | Comma-separated values accepted for the `platform` field |
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |

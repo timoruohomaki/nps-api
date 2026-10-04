@@ -99,6 +99,7 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 | FEEDBACK_ENC_KEY    | (empty)       | base64 32-byte AES-256 key; encrypts comment/timezone at rest. Empty = unencrypted + warning; malformed = fail to start |
 | API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values for POST. Empty = open |
 | READ_API_KEYS       | (empty)       | Comma-separated consumer keys for GET analytics query. Empty = read endpoint disabled (503) |
+| ALLOWED_PLATFORMS   | macOS,Windows | Comma-separated allowlist for the `platform` field (set via model.SetAllowedPlatforms at startup) |
 | SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
 | SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
