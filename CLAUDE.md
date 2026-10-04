@@ -123,26 +123,27 @@ See `docs/feedback-v1.json` for the feedback payload schema.
 - Verifies the binary compiles
 
 **CD** (`.github/workflows/cd.yml`) — runs on push to `main` only:
-- Builds Docker image
-- Pushes to `ghcr.io/timoruohomaki/nps-api` (tagged with commit SHA + `latest`)
-- SSHs into server as `deploy`, pulls the new image, restarts the container
+- Builds Docker image, pushes to `ghcr.io/timoruohomaki/nps-api` (SHA + `latest`)
+- **Syncs `docker-compose.prod.yml` → `~/nps-api/docker-compose.yml`** (repo is the
+  source of truth for the compose; the server-side `.env` is never touched)
+- SSHs into server as `deploy`, pulls the new image, recreates the container
 
 **Required GitHub Secrets:** `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, `SERVER_PORT`
 **Required GitHub Environment:** `production`
 
 ## Server-Side Setup
 
-On the server, the deploy directory is `~/nps-api/`. Copy `docker-compose.prod.yml`
-as `docker-compose.yml` and create `~/nps-api/.env` with at least
-`FEEDBACK_ENC_KEY` (and optionally `SENTRY_DSN`). The SQLite database lives in the
-`nps-data` Docker volume (`/data/nps.db`) and survives `docker compose down`.
+CD creates `~/nps-api/` and keeps `docker-compose.yml` in sync from the repo, so
+the only manual, one-time step is the secrets file `~/nps-api/.env` (compose reads
+it for `${...}` values). The SQLite database lives in the `nps-data` Docker volume
+(`/data/nps.db`) and survives `docker compose down`.
 
 ```bash
 mkdir -p ~/nps-api
-# Copy docker-compose.prod.yml as docker-compose.yml
 echo "FEEDBACK_ENC_KEY=$(openssl rand -base64 32)" > ~/nps-api/.env
 chmod 600 ~/nps-api/.env
 # back up that key somewhere safe — losing it makes comments unrecoverable
+# optionally also add API_KEYS / READ_API_KEYS / ALLOWED_PLATFORMS
 ```
 
 Full procedure, backup, and troubleshooting: `backend01/docs/runbook-deploy-nps.md`.
