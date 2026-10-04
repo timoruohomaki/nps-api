@@ -32,6 +32,12 @@ func testKey(t *testing.T) string {
 
 func newTestServer(t *testing.T) (*httptest.Server, *db.Database) {
 	t.Helper()
+	// No API keys: auth disabled for the storage/encryption tests below.
+	return newTestServerWithKeys(t, nil)
+}
+
+func newTestServerWithKeys(t *testing.T, apiKeys []string) (*httptest.Server, *db.Database) {
+	t.Helper()
 
 	enc, err := crypto.New(testKey(t))
 	if err != nil {
@@ -45,10 +51,86 @@ func newTestServer(t *testing.T) (*httptest.Server, *db.Database) {
 	}
 	t.Cleanup(func() { database.Close(context.Background()) })
 
-	srv := httptest.NewServer(handler.RegisterRoutes(database))
+	srv := httptest.NewServer(handler.RegisterRoutes(database, apiKeys))
 	t.Cleanup(srv.Close)
 
 	return srv, database
+}
+
+const validBody = `{
+	"schema_version": "1.0",
+	"app": "rokdsk",
+	"app_version": "1.2.3",
+	"platform": "macOS",
+	"timestamp": "2026-01-01T00:00:00Z",
+	"nps_rating": 9,
+	"nps_category": "promoter",
+	"comment": "auth test"
+}`
+
+func postFeedback(t *testing.T, url, apiKey string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url+"/nps/api/v1/feedback", strings.NewReader(validBody))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	return resp
+}
+
+func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
+	srv, _ := newTestServerWithKeys(t, []string{"secret-key-1", "secret-key-2"})
+
+	t.Run("valid key accepted", func(t *testing.T) {
+		resp := postFeedback(t, srv.URL, "secret-key-2")
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("expected 201 with valid key, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("missing key rejected", func(t *testing.T) {
+		resp := postFeedback(t, srv.URL, "")
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 without key, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("wrong key rejected", func(t *testing.T) {
+		resp := postFeedback(t, srv.URL, "nope")
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 with wrong key, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("health stays open", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/nps/health")
+		if err != nil {
+			t.Fatalf("GET health: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("health should not require a key, got %d", resp.StatusCode)
+		}
+	})
+}
+
+func TestAPIKey_OpenWhenUnset(t *testing.T) {
+	srv, _ := newTestServerWithKeys(t, nil)
+	resp := postFeedback(t, srv.URL, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("expected 201 with auth disabled, got %d", resp.StatusCode)
+	}
 }
 
 func TestHealthEndpoint(t *testing.T) {

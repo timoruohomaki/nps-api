@@ -40,6 +40,7 @@ nps-api/
 │   │   ├── health.go             # GET /nps/health + JSON helpers
 │   │   └── handler_test.go       # Unit tests
 │   ├── middleware/logging.go     # Request logging (method, path, status, duration)
+│   ├── middleware/auth.go        # X-API-Key check for the feedback endpoint
 │   └── model/
 │       ├── feedback.go           # Data model and validation
 │       └── feedback_test.go
@@ -96,6 +97,7 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 | PORT                | 8081          | HTTP listen port                       |
 | DB_PATH             | nps.db        | SQLite file path (container: /data/nps.db) |
 | FEEDBACK_ENC_KEY    | (empty)       | base64 32-byte AES-256 key; encrypts comment/timezone at rest. Empty = unencrypted + warning; malformed = fail to start |
+| API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values. Empty = feedback endpoint open |
 | SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
 | SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 
@@ -103,10 +105,10 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 
 All endpoints are prefixed with `/nps`:
 
-| Method | Path                      | Description                   |
-|--------|---------------------------|-------------------------------|
-| GET    | /nps/health               | Health check + timestamp      |
-| POST   | /nps/api/v1/feedback      | Submit NPS feedback           |
+| Method | Path                      | Description                   | Auth                       |
+|--------|---------------------------|-------------------------------|----------------------------|
+| GET    | /nps/health               | Health check + timestamp      | open                       |
+| POST   | /nps/api/v1/feedback      | Submit NPS feedback           | X-API-Key if API_KEYS set  |
 
 See `docs/feedback-v1.json` for the feedback payload schema.
 

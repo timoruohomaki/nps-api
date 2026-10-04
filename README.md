@@ -38,6 +38,7 @@ All configuration is via environment variables. See `.env.example` for reference
 |---|---|---|---|
 | `DB_PATH` | No | `nps.db` | SQLite database file path (container sets `/data/nps.db`) |
 | `FEEDBACK_ENC_KEY` | Prod | — | base64 32-byte AES-256 key; encrypts `comment`/`timezone` at rest. Empty = unencrypted (dev only) |
+| `API_KEYS` | No | — | Comma-separated accepted `X-API-Key` values for the feedback endpoint. Empty = open |
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |
@@ -85,9 +86,15 @@ Returns `200 OK` with `{"status": "healthy", "timestamp": "..."}`.
 ```
 POST /nps/api/v1/feedback
 Content-Type: application/json
+X-API-Key: <key>          # required only when API_KEYS is configured
 ```
 
 See [`docs/feedback-v1.json`](docs/feedback-v1.json) for the full JSON schema.
+
+When `API_KEYS` is set, requests to this endpoint must send a matching
+`X-API-Key` header or receive `401`. The health check is always open. With
+`API_KEYS` empty the endpoint accepts requests without a key (backward
+compatible) and logs a warning at startup.
 
 **Example request:**
 
@@ -113,6 +120,7 @@ curl -X POST https://api.ruohomaki.fi/nps/api/v1/feedback \
 |---|---|
 | `201 Created` | Feedback stored successfully |
 | `400 Bad Request` | Invalid JSON |
+| `401 Unauthorized` | Missing/invalid `X-API-Key` (only when `API_KEYS` is set) |
 | `422 Unprocessable Entity` | Validation error (details in response body) |
 
 ## Development

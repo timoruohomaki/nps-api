@@ -14,6 +14,10 @@ services:
       # (comment, timezone) at rest. Empty => stored unencrypted (logged as a
       # warning). Generate: openssl rand -base64 32
       - FEEDBACK_ENC_KEY=${FEEDBACK_ENC_KEY:-}
+      # Comma-separated accepted X-API-Key values for the feedback endpoint.
+      # Empty => endpoint is open (requests pass without a key). Enable only once
+      # BOTH clients send a matching key (see runbook rollout note).
+      - API_KEYS=${API_KEYS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=production
     volumes:

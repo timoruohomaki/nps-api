@@ -38,7 +38,13 @@ func main() {
 	database, cleanup := connectDB(cfg, enc)
 	defer cleanup()
 
-	mux := handler.RegisterRoutes(database)
+	if len(cfg.APIKeys) == 0 {
+		slog.Warn("API_KEYS not set — feedback endpoint accepts requests without an API key")
+	} else {
+		slog.Info("API key auth enabled", "keys", len(cfg.APIKeys))
+	}
+
+	mux := handler.RegisterRoutes(database, cfg.APIKeys)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
