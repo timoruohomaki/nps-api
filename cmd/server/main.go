@@ -16,14 +16,23 @@ import (
 	"github.com/idefinity/nps-api/internal/handler"
 	"github.com/idefinity/nps-api/internal/middleware"
 	"github.com/idefinity/nps-api/internal/model"
+	"github.com/idefinity/nps-api/internal/retention"
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
 
 	model.SetAllowedPlatforms(cfg.AllowedPlatforms)
 
 	initSentry(cfg)
+
+	// Cancelled on SIGINT/SIGTERM; drives both HTTP shutdown and the cleanup loop.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	enc, err := crypto.New(cfg.EncKey)
 	if err != nil {
@@ -64,7 +73,8 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	go awaitShutdown(srv)
+	go retention.Run(ctx, database, cfg.RetentionMonths, retention.Interval, time.Now)
+	go awaitShutdown(ctx, srv)
 
 	slog.Info("server starting", "port", cfg.Port, "prefix", "/nps")
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
@@ -108,16 +118,14 @@ func connectDB(cfg *config.Config, enc *crypto.Cipher) (*db.Database, func()) {
 	return database, cleanup
 }
 
-func awaitShutdown(srv *http.Server) {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+func awaitShutdown(ctx context.Context, srv *http.Server) {
+	<-ctx.Done()
 
 	slog.Info("shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(drainCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 	}
 }
