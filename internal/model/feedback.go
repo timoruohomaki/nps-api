@@ -12,8 +12,8 @@ type Feedback struct {
 	ID            int64     `json:"id,omitempty"`
 	SchemaVersion string    `json:"schema_version"`
 	App           string    `json:"app"`
-	AppVersion    string    `json:"app_version"`
-	Platform      string    `json:"platform"`
+	AppVersion    string    `json:"app_version,omitempty"` // optional in schema 1.1 (consent-gated)
+	Platform      string    `json:"platform,omitempty"`    // optional in schema 1.1 (consent-gated)
 	Timestamp     string    `json:"timestamp"`
 	NPSRating     int       `json:"nps_rating"`
 	NPSCategory   string    `json:"nps_category"`
@@ -62,17 +62,26 @@ var validCategories = map[string]bool{
 }
 
 // Validate checks that all required fields are present and valid.
+//
+// Schema "1.0" requires app_version and platform. Schema "1.1" makes both
+// optional: clients send them only when the user consents (ROK-311). A platform
+// that is present must still be on the allowlist in either version.
 func (f *Feedback) Validate() error {
-	if f.SchemaVersion != "1.0" {
+	var consentGated bool
+	switch f.SchemaVersion {
+	case "1.0":
+	case "1.1":
+		consentGated = true
+	default:
 		return fmt.Errorf("unsupported schema_version: %q", f.SchemaVersion)
 	}
 	if f.App == "" {
 		return fmt.Errorf("app is required")
 	}
-	if f.AppVersion == "" {
+	if f.AppVersion == "" && !consentGated {
 		return fmt.Errorf("app_version is required")
 	}
-	if !isPlatformAllowed(f.Platform) {
+	if !(f.Platform == "" && consentGated) && !isPlatformAllowed(f.Platform) {
 		return fmt.Errorf("invalid platform: %q", f.Platform)
 	}
 	if f.Timestamp == "" {

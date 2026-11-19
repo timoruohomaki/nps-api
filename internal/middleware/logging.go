@@ -16,7 +16,9 @@ func (w *wrappedWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Logging wraps an http.Handler with structured request logging.
+// Logging wraps an http.Handler with structured request logging. It deliberately
+// never logs the client address (r.RemoteAddr or forwarding headers): the
+// privacy policy promises IPs are not stored alongside feedback.
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -29,7 +31,6 @@ func Logging(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", wrapped.statusCode,
 			"duration_ms", time.Since(start).Milliseconds(),
-			"remote", r.RemoteAddr,
 		)
 	})
 }

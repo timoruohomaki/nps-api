@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://idefinity.app/schemas/feedback-v1.json",
   "title": "Idefinity Feedback",
-  "description": "NPS feedback submission from the Idefinity desktop application",
+  "description": "NPS feedback submission from the Idefinity desktop application. Schema 1.0 requires app_version and platform; schema 1.1 makes both optional because clients send them only when the user consents (ROK-311).",
   "type": "object",
 
   "definitions": {
@@ -16,18 +16,23 @@
   "required": [
     "schema_version",
     "app",
-    "app_version",
-    "platform",
     "timestamp",
     "nps_rating",
     "nps_category"
   ],
 
+  "allOf": [
+    {
+      "if": { "properties": { "schema_version": { "const": "1.0" } } },
+      "then": { "required": ["app_version", "platform"] }
+    }
+  ],
+
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.0",
-      "description": "Schema version for forward compatibility"
+      "enum": ["1.0", "1.1"],
+      "description": "Schema version. 1.0: app_version and platform required. 1.1: both optional (omitted without user consent)."
     },
     "app": {
       "type": "string",
@@ -37,13 +42,13 @@
     "app_version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+(\\.\\d+)?$",
-      "description": "Semantic version of the application (Major.Minor.Bug or Major.Minor.Bug.NonRelease)",
+      "description": "Semantic version of the application (Major.Minor.Bug or Major.Minor.Bug.NonRelease). Required in 1.0; in 1.1 sent only with user consent, omitted otherwise.",
       "examples": ["0.1.0", "1.0.0", "1.2.3.4"]
     },
     "platform": {
       "type": "string",
       "enum": ["macOS", "Windows"],
-      "description": "Operating system the feedback was sent from"
+      "description": "Operating system the feedback was sent from. Required in 1.0; in 1.1 sent only with user consent, omitted otherwise. If present it must be on the server allowlist (ALLOWED_PLATFORMS, default macOS,Windows)."
     },
     "timestamp": {
       "$ref": "#/definitions/iso8601DateTime",
@@ -95,6 +100,14 @@
       "nps_rating": 5,
       "nps_category": "detractor",
       "timezone": "Eastern Standard Time"
+    },
+    {
+      "schema_version": "1.1",
+      "app": "idefinity",
+      "timestamp": "2026-11-19T10:00:00Z",
+      "nps_rating": 7,
+      "nps_category": "passive",
+      "comment": "Sent without consent: no app_version or platform."
     }
   ]
 }

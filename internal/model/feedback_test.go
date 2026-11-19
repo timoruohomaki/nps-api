@@ -125,3 +125,38 @@ func TestValidate_MissingRequiredFields(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_Schema11_OptionalConsentFields(t *testing.T) {
+	fb := validFeedback()
+	fb.SchemaVersion = "1.1"
+	fb.AppVersion = ""
+	fb.Platform = ""
+	if err := fb.Validate(); err != nil {
+		t.Errorf("1.1 without app_version/platform should be valid, got %v", err)
+	}
+
+	fb = validFeedback()
+	fb.SchemaVersion = "1.1"
+	if err := fb.Validate(); err != nil {
+		t.Errorf("1.1 with consented fields should be valid, got %v", err)
+	}
+
+	fb.Platform = "Plan9"
+	if err := fb.Validate(); err == nil {
+		t.Error("1.1 with a platform off the allowlist should be rejected")
+	}
+}
+
+func TestValidate_Schema10_StillRequiresConsentFields(t *testing.T) {
+	fb := validFeedback()
+	fb.AppVersion = ""
+	if err := fb.Validate(); err == nil {
+		t.Error("1.0 without app_version should be rejected")
+	}
+
+	fb = validFeedback()
+	fb.Platform = ""
+	if err := fb.Validate(); err == nil {
+		t.Error("1.0 without platform should be rejected")
+	}
+}
