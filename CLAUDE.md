@@ -21,6 +21,9 @@ runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deplo
 - **PII encryption:** the `comment` and `timezone` columns are encrypted at rest
   with AES-256-GCM (`internal/crypto`, key from `FEEDBACK_ENC_KEY`) before being
   written. Metadata columns stay plaintext/queryable. Decrypt via `cmd/export`.
+- **Retention:** feedback older than `RETENTION_MONTHS` (default 12, privacy
+  policy) is deleted in-process by `internal/retention` — at startup, then every
+  24h. In-app rather than host cron because the alpine image has no sqlite3 CLI.
 - **Monitoring:** Sentry (`github.com/getsentry/sentry-go`) — optional, enabled via SENTRY_DSN
 - **Deployment:** Docker container on port 8081, reverse-proxied by Nginx
 
@@ -37,6 +40,8 @@ nps-api/
 │   ├── crypto/crypto_test.go
 │   ├── db/sqlite.go              # SQLite connection, schema, inserts, decrypting reads
 │   ├── db/migrate.go             # user_version-based schema migrations (run on Connect)
+│   ├── db/retention.go           # DeleteOlderThan (julianday compare on received_at)
+│   ├── retention/retention.go    # Cleanup loop: at startup + every 24h, stops on shutdown
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
 │   │   ├── feedback.go           # POST (submit) + GET (analytics query) feedback
@@ -103,6 +108,7 @@ go test ./...   # unit + integration (integration uses a temp SQLite DB, no exte
 | API_KEYS            | (empty)       | Comma-separated accepted X-API-Key values for POST. Empty = open |
 | READ_API_KEYS       | (empty)       | Comma-separated consumer keys for GET analytics query. Empty = read endpoint disabled (503) |
 | ALLOWED_PLATFORMS   | macOS,Windows | Comma-separated allowlist for the `platform` field (set via model.SetAllowedPlatforms at startup) |
+| RETENTION_MONTHS    | 12            | Delete feedback older than N months (startup + every 24h). 0 = disabled; malformed = fail to start |
 | SENTRY_DSN          | (empty)       | Sentry DSN — empty = disabled          |
 | SENTRY_ENVIRONMENT  | development   | Sentry environment tag                 |
 

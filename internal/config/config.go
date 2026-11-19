@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -13,13 +15,21 @@ type Config struct {
 	APIKeys          []string
 	ReadAPIKeys      []string
 	AllowedPlatforms []string
+	RetentionMonths  int // 0 = cleanup disabled
 	SentryDSN        string
 	SentryEnv        string
 	SentryTraceRate  float64
 }
 
 // Load reads configuration from environment variables with sensible defaults.
-func Load() *Config {
+// It returns an error for a value that is set but malformed, so the service
+// fails to start instead of silently ignoring it.
+func Load() (*Config, error) {
+	// Feedback older than this many months is deleted (privacy policy: 12).
+	retention, err := getEnvNonNegInt("RETENTION_MONTHS", 12)
+	if err != nil {
+		return nil, err
+	}
 	return &Config{
 		Port: getEnv("PORT", "8081"),
 		// Default is relative (cwd) so `go run ./cmd/server` works out of the
@@ -37,8 +47,22 @@ func Load() *Config {
 		AllowedPlatforms: getEnvCSV("ALLOWED_PLATFORMS", []string{"macOS", "Windows"}),
 		SentryDSN:        getEnv("SENTRY_DSN", ""),
 		SentryEnv:        getEnv("SENTRY_ENVIRONMENT", "development"),
+		RetentionMonths:  retention,
 		SentryTraceRate:  1.0,
+	}, nil
+}
+
+// getEnvNonNegInt parses a non-negative integer env value; unset = fallback.
+func getEnvNonNegInt(key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
 	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer, got %q", key, raw)
+	}
+	return n, nil
 }
 
 func getEnv(key, fallback string) string {

@@ -21,7 +21,10 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		fail("invalid configuration: %v", err)
+	}
 
 	enc, err := crypto.New(cfg.EncKey)
 	if err != nil {

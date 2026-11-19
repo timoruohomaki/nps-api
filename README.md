@@ -41,6 +41,7 @@ All configuration is via environment variables. See `.env.example` for reference
 | `API_KEYS` | No | — | Comma-separated accepted `X-API-Key` values for POSTing feedback. Empty = open |
 | `READ_API_KEYS` | Analytics | — | Comma-separated consumer keys for the GET query (returns decrypted PII). Empty = read endpoint disabled (503) |
 | `ALLOWED_PLATFORMS` | No | `macOS,Windows` | Comma-separated values accepted for the `platform` field |
+| `RETENTION_MONTHS` | No | `12` | Feedback older than this many months (by `received_at`) is deleted at startup and every 24h. `0` = disabled |
 | `PORT` | No | `8081` | HTTP server port |
 | `SENTRY_DSN` | No | — | Sentry DSN for error tracking |
 | `SENTRY_ENVIRONMENT` | No | `development` | Sentry environment tag |
@@ -55,6 +56,10 @@ platform, timestamps) stays in plaintext so it remains queryable.
 - `app_version` and `platform` are consent-gated from payload schema `1.1`:
   clients omit them unless the user ticks the consent checkbox, and the server
   stores `NULL` for omitted fields.
+- **Retention:** feedback is deleted automatically `RETENTION_MONTHS` (default
+  12) months after it is received. The cleanup runs inside the service once at
+  startup and then every 24 hours, and logs how many rows it deleted. Database
+  backups must not be kept longer than the same period.
 - Request logs never include the client IP address (or any forwarding header),
   so no IP is ever recorded alongside feedback.
 
