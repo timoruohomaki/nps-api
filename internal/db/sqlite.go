@@ -19,8 +19,9 @@ type Database struct {
 	enc *crypto.Cipher
 }
 
-// schema is applied on every start; CREATE TABLE IF NOT EXISTS makes it
-// idempotent, so first boot creates the table and later boots are no-ops.
+// schema is the base (user_version 0) table, applied on every start; CREATE
+// TABLE IF NOT EXISTS makes it idempotent. migrate (migrate.go) then upgrades it
+// to the current version — e.g. migration 1 makes app_version/platform nullable.
 const schema = `
 CREATE TABLE IF NOT EXISTS feedback (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +68,11 @@ func Connect(ctx context.Context, path string, enc *crypto.Cipher) (*Database, e
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
+	if err := migrate(ctx, sqlDB); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("failed to migrate schema: %w", err)
+	}
+
 	return &Database{db: sqlDB, enc: enc}, nil
 }
 
@@ -89,7 +95,7 @@ func (d *Database) InsertFeedback(ctx context.Context, fb *model.Feedback) error
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	res, err := d.db.ExecContext(ctx, q,
-		fb.SchemaVersion, fb.App, fb.AppVersion, fb.Platform, fb.Timestamp,
+		fb.SchemaVersion, fb.App, nullIfEmpty(fb.AppVersion), nullIfEmpty(fb.Platform), fb.Timestamp,
 		fb.NPSRating, fb.NPSCategory, encTimezone, encComment,
 		fb.ReceivedAt.UTC().Format(time.RFC3339Nano),
 	)
@@ -132,12 +138,14 @@ func (d *Database) ListFeedback(ctx context.Context, year int) ([]model.Feedback
 	for rows.Next() {
 		var (
 			fb         model.Feedback
+			appVersion sql.NullString // NULL when the user did not consent (1.1)
+			platform   sql.NullString
 			tz         string
 			comment    string
 			receivedAt string
 		)
 		if err := rows.Scan(
-			&fb.ID, &fb.SchemaVersion, &fb.App, &fb.AppVersion, &fb.Platform,
+			&fb.ID, &fb.SchemaVersion, &fb.App, &appVersion, &platform,
 			&fb.Timestamp, &fb.NPSRating, &fb.NPSCategory, &tz, &comment, &receivedAt,
 		); err != nil {
 			return nil, err
@@ -149,11 +157,20 @@ func (d *Database) ListFeedback(ctx context.Context, year int) ([]model.Feedback
 		if fb.Comment, err = d.enc.Decrypt(comment); err != nil {
 			return nil, fmt.Errorf("decrypt comment (id %d): %w", fb.ID, err)
 		}
+		fb.AppVersion, fb.Platform = appVersion.String, platform.String
 		fb.ReceivedAt, _ = time.Parse(time.RFC3339Nano, receivedAt)
 
 		out = append(out, fb)
 	}
 	return out, rows.Err()
+}
+
+// nullIfEmpty maps an omitted (empty) optional field to SQL NULL.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // Ping verifies the database is reachable.

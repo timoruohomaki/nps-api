@@ -15,7 +15,9 @@ runbooks, deployment scripts). Server-side deploy: `backend01/docs/runbook-deplo
 - **Router:** Standard library `net/http` (Go 1.22+ routing patterns)
 - **Database:** Local SQLite via `modernc.org/sqlite` (pure-Go, no CGO). One
   `feedback` table; file persisted in a Docker volume at `/data/nps.db`. No
-  external database or network dependency.
+  external database or network dependency. Schema changes are numbered
+  migrations in `internal/db/migrate.go`, tracked with `PRAGMA user_version` and
+  applied automatically on startup (append new steps, never edit applied ones).
 - **PII encryption:** the `comment` and `timezone` columns are encrypted at rest
   with AES-256-GCM (`internal/crypto`, key from `FEEDBACK_ENC_KEY`) before being
   written. Metadata columns stay plaintext/queryable. Decrypt via `cmd/export`.
@@ -34,12 +36,13 @@ nps-api/
 │   ├── crypto/crypto.go          # AES-256-GCM field encryption for PII columns
 │   ├── crypto/crypto_test.go
 │   ├── db/sqlite.go              # SQLite connection, schema, inserts, decrypting reads
+│   ├── db/migrate.go             # user_version-based schema migrations (run on Connect)
 │   ├── handler/
 │   │   ├── routes.go             # Route registration under /nps prefix
 │   │   ├── feedback.go           # POST (submit) + GET (analytics query) feedback
 │   │   ├── health.go             # GET /nps/health + JSON helpers
 │   │   └── handler_test.go       # Unit tests
-│   ├── middleware/logging.go     # Request logging (method, path, status, duration)
+│   ├── middleware/logging.go     # Request logging (method, path, status, duration; never client IP)
 │   ├── middleware/auth.go        # X-API-Key check for the feedback endpoint
 │   └── model/
 │       ├── feedback.go           # Data model and validation
@@ -62,7 +65,7 @@ nps-api/
 - Graceful shutdown on SIGINT/SIGTERM with 10-second drain timeout
 - Configuration via environment variables, never hardcoded
 - Dates and times in ISO 8601 / RFC 3339 format
-- Structured log output with `slog`
+- Structured log output with `slog`; never log client IPs (`RemoteAddr`, `X-Forwarded-For`)
 - Container ports bind to 127.0.0.1 (Docker bypasses UFW on 0.0.0.0)
 - Use `docker compose` (v2, space not hyphen)
 - Sentry is optional — runs fine without SENTRY_DSN set
@@ -113,7 +116,11 @@ All endpoints are prefixed with `/nps`:
 | POST   | /nps/api/v1/feedback           | Submit NPS feedback                | X-API-Key if API_KEYS set     |
 | GET    | /nps/api/v1/feedback[?year=]   | Query feedback (decrypted) for analytics | consumer X-API-Key; 503 if READ_API_KEYS unset |
 
-See `docs/feedback-v1.json` for the feedback payload schema.
+See `docs/feedback-v1.json` for the feedback payload schema. Accepted
+`schema_version` values: `"1.0"` (`app_version` and `platform` required) and
+`"1.1"` (both optional: clients send them only with user consent, ROK-311;
+omitted fields are stored as NULL; a present `platform` must still be on the
+allowlist).
 
 ## CI/CD Pipeline
 

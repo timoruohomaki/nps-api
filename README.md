@@ -52,6 +52,12 @@ location in `timezone`). Those two fields are encrypted at rest with AES-256-GCM
 before being written to SQLite; the NPS metadata (rating, category, app, version,
 platform, timestamps) stays in plaintext so it remains queryable.
 
+- `app_version` and `platform` are consent-gated from payload schema `1.1`:
+  clients omit them unless the user ticks the consent checkbox, and the server
+  stores `NULL` for omitted fields.
+- Request logs never include the client IP address (or any forwarding header),
+  so no IP is ever recorded alongside feedback.
+
 - Set `FEEDBACK_ENC_KEY` to a base64-encoded 32-byte key:
   `openssl rand -base64 32`.
 - If the key is unset the service runs but stores those fields **unencrypted**
@@ -92,6 +98,17 @@ X-API-Key: <key>          # required only when API_KEYS is configured
 ```
 
 See [`docs/feedback-v1.json`](docs/feedback-v1.json) for the full JSON schema.
+
+Two payload versions are accepted:
+
+| `schema_version` | `app_version` | `platform` |
+|---|---|---|
+| `1.0` | required | required, on the `ALLOWED_PLATFORMS` allowlist |
+| `1.1` | optional (sent only with user consent) | optional (sent only with user consent); if present, must be on the allowlist |
+
+All other fields are the same in both versions. A 1.1 payload without consent
+contains only `schema_version`, `app`, `timestamp`, `nps_rating`,
+`nps_category` and optionally `comment` / `timezone`.
 
 When `API_KEYS` is set, requests to this endpoint must send a matching
 `X-API-Key` header or receive `401`. The health check is always open. With
